@@ -39,6 +39,7 @@
 #define ENCODE_OFFSET			0x47
 #define UART_READ_TIMEOUT_MS	200
 #define KEYS_BUFFER_SIZE		10
+#define BOOT_START_TIMEOUT_MS	50
 
 
 MAIN()
@@ -225,9 +226,12 @@ MAIN()
 				uint16_t pass;
 				if (uart_read(UART_READ_TIMEOUT_MS, pass) && pass == CMD_BOOTLOADER_PASS)
 				{
+					INT_DISABLE();
+					
 					uart_write_byte(RESP_SUCCESS);
 					
-					INT_DISABLE();
+					delay_ms(BOOT_START_TIMEOUT_MS);
+					
 					JUMP_TO_BOOT();
 				}
 				else
