@@ -84,7 +84,7 @@ The firmware is implemented for two types of microcontrollers: (PIC and AVR) and
   * Command Reset received keys queue `CMD_RESET_QUEUE`
     Removes all queued data, restarts continuous reading, and returns a no-error code `RESP_SUCCESS` to the host.
   * Command Write key to T55x7 compatible device `CMD_WRITE_T55X7`
-    After receiving this command, the device waits for a specified time for a packet containing the value of the key(keys[^1]). If the length or content of the received packet is incorrect, a corresponding error code is sent (`RESP_INVALID_LENGTH`, `RESP_INVALID_VALUE`). If the key data is successfully received, it will be written to the label. Once the writing is complete, the `RESP_SUCCESS` code will be sent to the host and the continuous reading process will be restarted, losing the data currently contained in the queue.
+    After receiving this command, the device waits for a specified time for a packet containing the value of the key(keys <sup>[1](#note1)</sup>). If the length or content of the received packet is incorrect, a corresponding error code is sent (`RESP_INVALID_LENGTH`, `RESP_INVALID_VALUE`). If the key data is successfully received, it will be written to the label. Once the writing is complete, the `RESP_SUCCESS` code will be sent to the host and the continuous reading process will be restarted, losing the data currently contained in the queue.
   * Command Write key to EM4x05 compatible device `CMD_WRITE_EM4X05`
     After receiving this command, the device waits for a specified time for a packet containing the value of the key. If the length or content of the received packet is incorrect, a corresponding error code is sent (`RESP_INVALID_LENGTH`, `RESP_INVALID_VALUE`). If the key data is successfully received, it will be written to the label. Once the writing is complete, the `RESP_SUCCESS` code will be sent to the host and the continuous reading process will be restarted, losing the data currently contained in the queue.
   * Command Launch the bootloader `CMD_START_BOOTLOADER` (Default platform only)
@@ -92,7 +92,8 @@ The firmware is implemented for two types of microcontrollers: (PIC and AVR) and
 	`CMD_BOOTLOADER_PASS` `0x5AA5`
 	If the "password" is not received or is received but incorrect, the device sends an error code to the host `RESP_INVALID_PASS`. Otherwise, the device sends confirmation code `RESP_SUCCESS` to the host and, after some delay, proceeds to bootloader execution.
 	
-	[^1]: Note1: The memory structure and operating algorithm of T55x7 devices allow for the recording and use of up to three keys sequentially located in memory (and therefore transmitted sequentially). This capability has been implemented, and the write function, like the `CMD_WRITE_T55X7` command in general, accepts an array of keys as arguments. In this case, the number of keys is encoded in the two least significant bits of the `CMD_WRITE_T55X7` command.
+<a name="note1"></a>
+<sup>1</sup> Note1: The memory structure and operating algorithm of T55x7 devices allow for the recording and use of up to three keys sequentially located in memory (and therefore transmitted sequentially). This capability has been implemented, and the write function, like the `CMD_WRITE_T55X7` command in general, accepts an array of keys as arguments. In this case, the number of keys is encoded in the two least significant bits of the `CMD_WRITE_T55X7` command.
   
 ### Bootloader
 
@@ -107,16 +108,20 @@ The bootloader allows:
 
 To work with the bootloader, use the command line utility `picboot`. Usage:
   * Backup current target firmware:
-    ``` picboot.exe -p=COM5 -d=9600 -b=32 -c=4096 -s=0xF00 -k=backup.hex ``` 
+    ``` 
+	picboot.exe -p=COM5 -d=9600 -b=32 -c=4096 -s=0xF00 -k=backup.hex
+	``` 
   * Downloading a new target firmware:
-    ``` picboot.exe -p=COM5 -d=9600 -b=32 -c=4096 -s=0xF00 -f=project.hex ```
+    ```
+	picboot.exe -p=COM5 -d=9600 -b=32 -c=4096 -s=0xF00 -f=project.hex
+	```
 
 ## Software
 
 The host program on the PC allows you to: 
   * receive read tag keys from the device in continuous reading mode;
-  * flash up to three keys into T55x7 tags;
-  * flash up to a key into EM4x05 tags.
+  * flash up to three keys into T55x7 tag;
+  * flash a key into EM4x05 tag.
 
 ## Development tools
 
