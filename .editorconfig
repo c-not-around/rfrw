@@ -1,0 +1,14 @@
+[*.c,Makefile]
+charset = utf-8
+end_of_line = crlf
+indent_size = 4
+indent_style = tab
+tab_width = 4
+insert_final_newline = false
+
+[*.pas]
+charset = utf-8
+end_of_line = crlf
+indent_size = 2
+indent_style = space
+insert_final_newline = false

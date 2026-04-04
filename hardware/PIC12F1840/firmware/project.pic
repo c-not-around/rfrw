@@ -1,0 +1,47 @@
+PLAT   = PLATFORM_DEFAULT
+TARGET = 12F1840
+PROJ   = project
+CC     = "C:\Program Files (x86)\HI-TECH Software\PICC\9.71a\bin\picc.exe"
+CFLAGS = --chip=$(TARGET) \
+		 -Ihal -Isys -Irfid -I. \
+		 -D$(PLAT) \
+		 -P \
+		 --runtime=default,+clear,+init,-keep,+osccal,+download,-resetbits,-stackcall,+clib \
+		 --opt=default,+asm,-debug,+speed,+space,9 \
+		 --warn=0 \
+		 --double=24 \
+		 --float=24 \
+		 --addrqual=ignore \
+		 -g \
+		 --asmlist \
+		 "--errformat=Error   [%n] %f; %l.%c %s" \
+		 "--msgformat=Advisory[%n] %s" \
+		 "--warnformat=Warning [%n] %f; %l.%c %s"
+PFLAGS = -q
+HFLAGS = -o$(PROJ).cof \
+		 -m$(PROJ).map \
+		 --summary=default,+psect,-class,+mem,-hex \
+		 --output=default,-inhx032 \
+		 --ROM=default,-F00-FFF 
+
+clean:
+	@echo ================CLEAN-ALL=================
+	rm -f funclist $(wildcard *.p1) $(wildcard *.pre) $(PROJ).cof $(PROJ).hxl $(PROJ).lst $(PROJ).obj $(PROJ).map $(PROJ).rlf $(PROJ).sdb $(PROJ).sym 
+
+obj:
+	@echo ================BUILD-MAIN================
+	$(CC) --pass1 main.c $(PFLAGS) $(CFLAGS)
+	@echo ================BUILD-RFID================
+	$(CC) --pass1 rfid\rfid.c $(PFLAGS) $(CFLAGS)
+	@echo ================BUILD-UART================
+	$(CC) --pass1 sys\uart.c $(PFLAGS) $(CFLAGS)
+	@echo ================BUILD-DELAYS==============
+	$(CC) --pass1 sys\delays.c $(PFLAGS) $(CFLAGS)
+
+hex:
+	@echo ================CLEAN-HEX=================
+	rm -f $(PROJ).hex
+	@echo ================BUILD-HEX=================
+	$(CC) $(HFLAGS) main.p1 rfid.p1 uart.p1 delays.p1 $(CFLAGS)
+
+all: clean obj hex

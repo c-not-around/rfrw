@@ -1,0 +1,215 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>System.IntelHex</name>
+    </assembly>
+    <members>
+        <member name="T:System.IntelHex.IntelHexRecordType">
+            <summary>
+            Record types defined in the IntelHex format.
+            </summary>
+        </member>
+        <member name="T:System.IntelHex.IntelHexRecord">
+            <summary>
+            Represents IntelHex record.
+            </summary>
+        </member>
+        <member name="T:System.IntelHex.IntelHexRegion">
+            <summary>
+            Represents the parameters of a segment in a segmented address space.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexRegion.Offset">
+            <summary>
+            The offset of the segment relative to address zero of the segmented address space.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexRegion.Size">
+            <summary>
+            The size of a segment relative to address zero of the segmented address space.
+            </summary>
+        </member>
+        <member name="M:System.IntelHex.IntelHexRegion.#ctor(System.Int64,System.Int64)">
+            <summary>
+            Initializes a new IntelHexRegion object using the given Offset and Size.
+            </summary>
+            <param name="Offset">The offset of the segment relative to address zero of the segmented address space.</param>
+            <param name="Size">The size of a segment relative to address zero of the segmented address space.</param>
+        </member>
+        <member name="T:System.IntelHex.IntelHexSegmentType">
+            <summary>
+            Defines the data type of the segment.
+            </summary>
+        </member>
+        <member name="T:System.IntelHex.IntelHexSegmentInfo">
+            <summary>
+            Represents the enhanced parameters of a segment in a segmented address space.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexSegmentInfo.Type">
+            <summary>
+            Specifies the data type of the segment.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexSegmentInfo.Offset">
+            <summary>
+            The offset of the segment relative to address zero of the segmented address space.
+            Set according to the data type defined by the value of the Type field.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexSegmentInfo.Size">
+            <summary>
+            The size of a segment relative to address zero of the segmented address space.
+            Set according to the data type defined by the value of the Type field.
+            </summary>
+        </member>
+        <member name="F:System.IntelHex.IntelHexSegmentInfo.Empty">
+            <summary>
+            Specifies a 16-bit value that will be used to fill the elements of the output array for which data is missing from the file.
+            </summary>
+        </member>
+        <member name="M:System.IntelHex.IntelHexSegmentInfo.#ctor(System.Int64,System.Int64,System.IntelHex.IntelHexSegmentType,System.UInt16)">
+            <summary>
+            Initializes a new IntelHexSegmentInfo object using the given Type, Offset, Size and Empty data unit value.
+            </summary>
+            <param name="Offset">The offset of the segment relative to address zero of the segmented address space.</param>
+            <param name="Size">The size of a segment relative to address zero of the segmented address space.</param>
+            <param name="Type">Segment data type.</param>
+            <param name="Empty">Value for initial filling of the output data array.</param>
+        </member>
+        <member name="T:System.IntelHex.IntelHexSegment">
+            <summary>
+            Represents an object containing the data segment of a single segment.
+            </summary>
+        </member>
+        <member name="T:System.IntelHex.IntelHex">
+            <summary>
+            Contains methods for working with files in the IntelHex format. 
+            Reading and writing both individual IntelHex records and entire dumps.
+            </summary>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.Parse(System.String)">
+            <summary>
+            Decodes the string representation of an IntelHex Record.
+            </summary>
+            <param name="line">IntelHex Record Image String.</param>
+            <returns>A IntelHexRecord object representing a recognized IntelHex record.</returns>
+            <exception cref="T:System.Exception">If the input string does not conform to the IntelHex format, an appropriate exception is thrown.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveDataBytes(System.UInt16,System.Byte[],System.Int64,System.Int32)">
+            <summary>
+            Generates a record with IntelHex data as a string.
+            Helper function.
+            </summary>
+            <param name="address">Data offset in the generated record.</param>
+            <param name="dump">Byte array - data source.</param>
+            <param name="index">The index in the source array from which the data will be taken.</param>
+            <param name="count">The number of bytes from which an IntelHex record must be formed.</param>
+            <returns>The term representing the generated IntelHex record.</returns>
+            <exception cref="T:System.Exception">The number of data bytes specified is more than 255.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveDataWords(System.UInt16,System.UInt16[],System.Int64,System.Int32)">
+            <summary>
+            Generates a record with IntelHex data as a string.
+            Helper function.
+            </summary>
+            <param name="address">Data offset in the generated record. The byte address is specified.</param>
+            <param name="dump">Array of word - data source.</param>
+            <param name="index">The index in the source array from which the data will be taken.</param>
+            <param name="count">The number of words from which an IntelHex record must be formed.</param>
+            <returns>The term representing the generated IntelHex record.</returns>
+            <exception cref="T:System.Exception">The number of data bytes specified is more than 127.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveAddress(System.UInt16)">
+            <summary>
+            Generates an IntelHex record of type "Extended Linear Address" as a string.
+            Helper function.
+            </summary>
+            <param name="address">Extended Line Address Value (32-bit address high-order part).</param>
+            <returns>The term representing the generated IntelHex record.</returns>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.ReadBytes(System.String,System.Int64)">
+            <summary>
+            Reads a byte array of data from the specified file in ItelHex format.
+            </summary>
+            <param name="fname">Specifies the name of the file containing the data.</param>
+            <param name="size">The maximum expected size of the data array.</param>
+            <returns>Array of read data bytes.</returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.ReadWords(System.String,System.Int64,System.UInt16)">
+            <summary>
+            Reads an word array of data from the specified file in ItelHex format.
+            </summary>
+            <param name="fname">Specifies the name of the file containing the data.</param>
+            <param name="size">The maximum expected size of the data array. Specified as a number of 16-bit words.</param>
+            <param name="empty">Specifies a 16-bit value that will be used to fill the elements of the output array of words for which data is missing from the file.</param>
+            <returns>An array of read data bytes as an array of 16-bit words.</returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.ReadDump(System.String,System.IntelHex.IntelHexRegion[])">
+            <summary>
+            Reads a complex dump containing segmented data.
+            </summary>
+            <param name="fname">Specifies the name of the file containing the data.</param>
+            <param name="regions">Specifies a variable number of objects describing segments of the address space.</param>
+            <returns>An array of data arrays, each representing data from one of the individual segments.</returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.ReadDump(System.String,System.IntelHex.IntelHexSegmentInfo[])">
+            <summary>
+            Reads a complex dump containing segmented data.
+            </summary>
+            <param name="fname">Specifies the name of the file containing the data.</param>
+            <param name="segments">Specifies a variable number of objects describing segments of the address space.</param>
+            <returns>List of IntelHexSegment type objects, each representing data from one of the individual segments.</returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveBytes(System.String,System.Byte[],System.Int64,System.Boolean,System.Int32)">
+            <summary>
+            Appends an array of bytes to a file in IntelHex format. 
+            </summary>
+            <param name="fname">File name. The file is appended to, not overwritten.</param>
+            <param name="dump">An byte array to save. Saved entirely to a hex file.</param>
+            <param name="offset">The initial offset of the bytes to be saved in the hex file.</param>
+            <param name="end">Specifies that an end-of-hex file marker should be added after the data being saved.</param>
+            <param name="width">Specifies the length of one hex data record.</param>
+            <exception cref="T:System.Exception">The hex string width is set to more than 255 bytes.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveWords(System.String,System.UInt16[],System.Int64,System.Boolean,System.Int32)">
+            <summary>
+            Appends an array of 16-bit words to a file in IntelHex format. 
+            </summary>
+            <param name="fname">File name. The file is appended to, not overwritten.</param>
+            <param name="dump">An array of words to save. Saved entirely to a hex file.</param>
+            <param name="offset">The initial offset of the words to be saved in the hex file. Specified as a "word address" - NOT a byte address.</param>
+            <param name="end">Specifies that an end-of-hex file marker should be added after the data being saved.</param>
+            <param name="width">Specifies the length of one hex data record. Specified in words. The default is 8 words, i.e., 16 bytes per line.</param>
+            <exception cref="T:System.Exception">The hex string width is set to more than 127 words.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveBytesReduced(System.String,System.Byte[],System.Int64,System.Boolean,System.Byte,System.Int32)">
+            <summary>
+            Appends an array of bytes to a file in IntelHex format, excluding empty values. 
+            </summary>
+            <param name="fname">File name. The file is appended to, not overwritten.</param>
+            <param name="dump">An byte array to save. Saved entirely to a hex file.</param>
+            <param name="offset">The initial offset of the bytes to be saved in the hex file.</param>
+            <param name="end">Specifies that an end-of-hex file marker should be added after the data being saved.</param>
+            <param name="empty">Specifies the value of a byte that will be considered empty. Such bytes will be skipped when saving data to a hex file.</param>
+            <param name="width">Specifies the length of one hex data record.</param>
+            <exception cref="T:System.Exception">The hex string width is set to more than 255 bytes.</exception>
+        </member>
+        <member name="M:System.IntelHex.IntelHex.SaveWordsReduced(System.String,System.UInt16[],System.Int64,System.Boolean,System.UInt16,System.Int32)">
+            <summary>
+            Appends an array of 16-bit words to a file in IntelHex format, excluding empty values. 
+            </summary>
+            <param name="fname">File name. The file is appended to, not overwritten.</param>
+            <param name="dump">An array of words to save. Saved entirely to a hex file.</param>
+            <param name="offset">The initial offset of the words to be saved in the hex file. Specified as a "word address" - NOT a byte address.</param>
+            <param name="end">Specifies that an end-of-hex file marker should be added after the data being saved.</param>
+            <param name="empty">Specifies the value of a word that will be considered empty. Such words will be skipped when saving data to a hex file.</param>
+            <param name="width">Specifies the length of one hex data record. Specified in words. The default is 8 words, i.e., 16 bytes per line.</param>
+            <exception cref="T:System.Exception">The hex string width is set to more than 127 words.</exception>
+        </member>
+    </members>
+</doc>

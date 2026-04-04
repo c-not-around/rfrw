@@ -1,0 +1,34 @@
+hardware/ATmega328/firmware/*.o
+hardware/ATmega328/firmware/*.bin
+hardware/ATmega328/firmware/*.map
+hardware/ATmega328/schematics/Backup_of_*.spl8
+hardware/ATmega328/Project\ Backups/
+hardware/ATmega328/*.workspace
+hardware/PIC12F1840/bootloader/firmware/*.cof
+hardware/PIC12F1840/bootloader/firmware/*.hxl
+hardware/PIC12F1840/bootloader/firmware/*.lst
+hardware/PIC12F1840/bootloader/firmware/*.rlf
+hardware/PIC12F1840/bootloader/firmware/*.sym
+hardware/PIC12F1840/bootloader/firmware/funclist
+hardware/PIC12F1840/bootloader/firmware/startup.*
+hardware/PIC12F1840/bootloader/software/src/*.pcu
+hardware/PIC12F1840/bootloader/software/src/picboot.pdb
+hardware/PIC12F1840/bootloader/software/src/picboot.exe
+hardware/PIC12F1840/firmware/*.cof
+hardware/PIC12F1840/firmware/*.hxl
+hardware/PIC12F1840/firmware/*.lst
+hardware/PIC12F1840/firmware/*.rlf
+hardware/PIC12F1840/firmware/*.sym
+hardware/PIC12F1840/firmware/*.sdb
+hardware/PIC12F1840/firmware/*.map
+hardware/PIC12F1840/firmware/*.pre
+hardware/PIC12F1840/firmware/*.p1
+hardware/PIC12F1840/firmware/*.obj
+hardware/PIC12F1840/firmware/funclist
+hardware/PIC12F1840/firmware/startup.*
+hardware/PIC12F1840/schematics/Backup_of_*.spl8
+hardware/PIC12F1840/Project\ Backups/
+hardware/PIC12F1840/*.workspace
+software/src/*.pcu
+software/src/*.pdb
+software/src/*.exe

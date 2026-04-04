@@ -1,0 +1,32 @@
+TARGET  = atmega328p
+PROJ    = project
+TC      = D:\Portable\Programming\AVR\bin
+CC      = $(TC)\avr-gcc
+COMPILE = $(CC) -Wall -O2 -Ihal -Isys -Irfid -I. -mmcu=$(TARGET)
+OBJECTS = sys/delays.o sys/uart.o rfid/rfid.o  main.o
+
+.c.o:
+	$(COMPILE) -c $< -o $@
+
+.s.o:
+	$(COMPILE) -x assembler-with-cpp -c $< -o $@
+
+.c.s:
+	$(COMPILE) -S $< -o $@
+
+clean:
+	rm -f $(wildcard *.o) $(wildcard sys/*.o) $(wildcard rfid/*.o) $(PROJ).map $(PROJ).bin
+
+main.bin: $(OBJECTS)
+	$(COMPILE) -o $(PROJ).bin $(OBJECTS) -Wl,-Map,$(PROJ).map
+
+main.hex: main.bin
+	rm -f $(PROJ).hex
+	$(TC)\avr-objcopy -j .text -j .data -O ihex $(PROJ).bin $(PROJ).hex
+
+all: clean main.hex
+	$(TC)\avr-size -C -t --mcu=$(TARGET) $(PROJ).bin
+	@echo use fuses:
+	@echo     LOW  = 0xEF
+	@echo     HIGH = 0xC9
+	@echo     EXT  = 0xFD

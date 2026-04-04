@@ -1,0 +1,16 @@
+PICC   = "C:\Program Files (x86)\HI-TECH Software\PICC\9.71a\bin\picc.exe"
+PROJ   = boot
+CHIP   = 12F1840
+FLGS   = --CHIP=$(CHIP) --ROM=F00-FFF --summary=default,+psect,-class,+mem,-hex --asmlist
+
+clean:
+	@echo ================CLEAN-ALL=================
+	rm -f $(PROJ).obj $(PROJ).rlf $(PROJ).pre $(PROJ).lst $(PROJ).cof $(PROJ).hxl $(PROJ).sym funclist startup.as startup.lst startup.obj startup.rlf
+
+hex:
+	@echo ================CLEAN-HEX=================
+	rm -f $(PROJ).hex
+	@echo ================BUILD-HEX=================
+	$(PICC) $(FLGS) $(PROJ).as
+
+all: clean hex
