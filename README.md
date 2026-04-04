@@ -2,6 +2,9 @@
 
 USB RFID 125kHz reader and programmer
 
+![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/default_1.jpg)
+![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/screen.png)
+
 ## Supported types of contactless identification devices
 
 EM4100 compatible devices are supported:
@@ -17,8 +20,18 @@ EM4100 compatible devices are supported:
   The project is implemented in the form of several platforms, based on the ATmega328P and PIC12F1840 microcontrollers.
 
   * The default platform is a PIC12F1840-based USB reader/programmer.
+    ![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/reader.jpg)
+	The original board of some reader (without support for key programming) of factory design was replaced with a homemade one.
+    ![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/default_2.jpg)
+	![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/default_3.jpg)
   * Embedded module based on PIC12F1840.
+    ![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/module_1.jpg)
+	![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/module_2.jpg)
   * Modified RDM6300 module (the standard controller has been replaced with a PIC12F1840).
+    ![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/rdm6300_2.jpg)
+	![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/rdm6300_3.jpg)
+	There are RDM6300 modules with a controller in a different package. This modification is not applicable to these versions of this module.
+	![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/rdm6300_4.jpg)
   * USB reader/programmer based on Arduino UNO / Nano.
   * Embedded module based on ATmega328P.
 
@@ -26,6 +39,8 @@ The analog part is based on the circuit implemented in the RDM6300 reader. This 
   * PWM / Timer module or other module capable of outputting a `125kHz` square wave to some GPIO output;
   * External interrupt on level change (rising and falling edges) on one of the pins;
   * A timer capable of counting time intervals of about `1000` microseconds with an accuracy of at least `1us`.
+
+![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/analog_part.jpg)
 
 The firmware is implemented for two types of microcontrollers: (PIC and AVR) and can be ported to other microcontrollers, both within these families and to completely different ones.
 
@@ -123,6 +138,8 @@ The host program on the PC allows you to:
   * flash up to three keys into T55x7 tag;
   * flash a key into EM4x05 tag.
 
+![screen](https://github.com/c-not-around/rfrw/blob/38eeddc4098e085a01da9ec7e1488c9aa7b7c213/screen.png)
+  
 ## Development tools
 
   | Task                         |  Tool                      | 
