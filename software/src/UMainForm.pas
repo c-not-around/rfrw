@@ -9,6 +9,7 @@
 {$resource res\connect.png}
 {$resource res\disconnect.png}
 {$resource res\paste.png}
+{$resource res\open.png}
 
 
 uses System;
@@ -18,14 +19,55 @@ uses System.Text.RegularExpressions;
 uses System.Globalization;
 uses System.Threading;
 uses System.Threading.Tasks;
+uses System.Diagnostics;
 uses System.Drawing;
 uses System.Windows.Forms;
 uses UExtensions;
 uses ULogBox;
+uses URfidKey;
 
 
 type
   TaskState = ( Running, Stoping, Completed );
+  
+  ResponseStatus =
+  (
+    Success               = $00,
+    InvalidCommand        = $81,
+    KeyQueueEmpty         = $82,
+    InvalidLength         = $83,
+    InvalidValue          = $84,
+    InvalidPass           = $85,
+    Timedout              = 1,
+    ResponseInvalidLength = 2,
+    ResponseInvalidCrc    = 3,
+    ResponseUnknownCode   = -1
+  );
+  
+  Response = class
+    {$region Fields}
+    private _Status: ResponseStatus;
+    private _Data  : array of byte;
+    {$endregion}
+    
+    {$region Ctors}
+    public constructor (status: ResponseStatus; data: array of byte);
+    begin
+      _Status := status;
+      _Data   := data;
+    end;
+    {$endregion}
+    
+    {$region Properties}
+    public property Status: ResponseStatus read (_Status);
+    
+    public property Length: integer read (_Data <> nil ? _Data.Length : -1);
+    
+    public property Data: array of byte read (_Data);
+    
+    public property Bytes[i: integer]: byte read (_Data[i]); default;
+    {$endregion}
+  end;
   
   MainForm = class(Form)
     {$region Fields}
@@ -44,31 +86,41 @@ type
     private _KeySelect      : array of System.Windows.Forms.CheckBox;
     private _KeyValues      : array of System.Windows.Forms.TextBox;
     private _Log            : LogBox;
+    private _UpgradeBox     : System.Windows.Forms.GroupBox;
+    private _BootStart      : System.Windows.Forms.Button;
+    private _FirmwareFname  : System.Windows.Forms.TextBox;
+    private _FirmwareSelect : System.Windows.Forms.Button;
+    private _FirmwareUpload : System.Windows.Forms.Button;
     private _Uart           : SerialPort;
     private _ReadTaskState  : TaskState;
     {$endregion}
     
     {$region Constants}
-    private const RFID_KEY_LENGTH      = 5;
     private const ENCODE_BYTE_LENGTH   = 2;
     private const ENCODE_CRC_LENGTH    = 1;
-    private const ENCODED_KEY_LENGTH   = ENCODE_BYTE_LENGTH*(RFID_KEY_LENGTH+ENCODE_CRC_LENGTH);
+    private const ENCODE_OFFSET        = $47;
+    private const CMD_START_BOOTLOADER = $02;
     private const CMD_GET_COUNT_KEY    = $04;
     private const CMD_GET_NEXT_KEY     = $08;
     private const CMD_RESET_QUEUE      = $10;
     private const CMD_WRITE_T55X7      = $20;
     private const CMD_WRITE_EM4X05     = $40;
     private const CMD_WRITE_KEY_MASK   = $03;
+    private const CMD_BOOTLOADER_PASS  = $5AA5;
     private const RESP_SUCCESS         = $00;
     private const RESP_INVALID_COMMAND = $81;
     private const RESP_KEY_QUEUE_EMPTY = $82;
     private const RESP_INVALID_LENGTH  = $83;
     private const RESP_INVALID_VALUE   = $84;
-    private const ENCODE_OFFSET        = $47;
+    private const RESP_INVALID_PASS    = $85;
     {$endregion}
     
     {$region Override}
-    protected procedure OnFormClosing(e: FormClosingEventArgs); override := Disconnect();
+    protected procedure OnFormClosing(e: FormClosingEventArgs); override;
+    begin
+      Disconnect();
+      inherited OnFormClosing(e);
+    end;
     {$endregion}
     
     {$region Routines}
@@ -80,156 +132,192 @@ type
       _PortDisconnect.Enabled := connect;
       _ReadBox.Enabled        := connect;
       _WriteBox.Enabled       := connect;
+      _UpgradeBox.Enabled     := connect;
     end;
     
     private procedure AccessUI(access: boolean);
     begin
-      _PortBox.Enabled  := not access;
-      _ReadBox.Enabled  := not access;
-      _WriteBox.Enabled := not access;
+      _PortBox.Enabled    := not access;
+      _ReadBox.Enabled    := not access;
+      _WriteBox.Enabled   := not access;
+      _UpgradeBox.Enabled := not access;
     end;
     
-    private function SerialTransfer(data: array of byte; length: integer; timeout: integer := 50): array of byte;
-    begin
-      _Uart.DiscardInBuffer();
-      _Uart.Write(data, 0, data.Length);
-      
-      result := nil;
-      
-      var t := DateTime.Now;
-      while (DateTime.Now - t).TotalMilliseconds < timeout do
-        if _Uart.BytesToRead >= length then
-          break;
-      
-      var count := Math.Min(_Uart.BytesToRead, length);
-      
-      if count > 0 then
-        begin
-          result := new byte[count];
-          _Uart.Read(result, 0, count);
-        end;
-    end;
+    private procedure LogAppendAsync(text: string; color: System.Drawing.Color; newline: boolean := true) := Invoke(() -> _Log.Append(text, color, newline));
     
-    private function PacketDecode(packet: array of byte): array of byte;
-    begin
-      var len := packet.Length div ENCODE_BYTE_LENGTH;
-      result := new byte[len];
-      for var i := 0 to len-1 do
-        result[i] := ((packet[ENCODE_BYTE_LENGTH*i+0] - ENCODE_OFFSET) shl 4) or (packet[ENCODE_BYTE_LENGTH*i+1] - ENCODE_OFFSET);
-    end;
+    private procedure LogErrorAsync(command: string; status: ResponseStatus) := Invoke(() -> _Log.Append($'{command} ErrorCode = {status}', Color.Red));
     
-    private function PacketCrc(packet: array of byte; length: integer): byte;
+    private function Crc8Calculate(data: array of byte; length: integer := -1): byte;
     begin
+      if length = -1 then
+        length := data.Length;
+      
       result := 0;
+      
       for var i := 0 to length-1 do
-        result += packet[i];
+        result += data[i];
+      
       result := (not result) + 1;
     end;
     
-    private function PacketEncode(packet: array of byte): array of byte;
+    private procedure PacketEncode(buffer: array of byte; index: integer; params data: array of byte);
     begin
-      result := new byte[ENCODE_BYTE_LENGTH*(packet.Length+ENCODE_CRC_LENGTH)];
-      for var i := 0 to packet.Length-1 do
+      for var i := 0 to data.Length-1 do
         begin
-          result[ENCODE_BYTE_LENGTH*i+0] := ENCODE_OFFSET + (packet[i] shr 4);
-          result[ENCODE_BYTE_LENGTH*i+1] := ENCODE_OFFSET + (packet[i] and $0F);
+          var d := data[i];
+          
+          buffer[index] := ENCODE_OFFSET + (d shr 4);   index += 1;
+          buffer[index] := ENCODE_OFFSET + (d and $0F); index += 1;
         end;
-      var crc := PacketCrc(packet, packet.Length);
-      result[ENCODE_BYTE_LENGTH*packet.Length+0] := ENCODE_OFFSET + (crc shr 4);
-      result[ENCODE_BYTE_LENGTH*packet.Length+1] := ENCODE_OFFSET + (crc and $0F);
     end;
+    
+    private function PacketDecode(packet: array of byte; length: integer): array of byte;
+    begin
+      result := new byte[length];
+      
+      var index := 0;
+      
+      for var i := 0 to length-1 do
+        begin
+          var h := packet[index] - ENCODE_OFFSET; index += 1;
+          var l := packet[index] - ENCODE_OFFSET; index += 1;
+          
+          result[i] := (h shl 4) or l;
+        end;
+    end;
+    
+    private function TransferBytes(data: array of byte; count: integer := 1; timeout: integer := 50): Response;
+    begin
+      _Uart.DiscardInBuffer();
+      _Uart.DiscardOutBuffer();
+      
+      _Uart.Write(data, 0, data.Length);
+      
+      var t := DateTime.Now;
+      
+      repeat
+        if _Uart.BytesToRead >= count then
+          break;
+      until (DateTime.Now - t).TotalMilliseconds > timeout;
+      
+      var len := Math.Min(count, _Uart.BytesToRead);
+      
+      if len = 0 then
+        exit(new Response(ResponseStatus.Timedout, nil));
+      
+      data := new byte[len];
+      _Uart.Read(data, 0, len);
+      
+      if len = count then
+        exit(new Response(ResponseStatus.Success, data));
+      
+      var status: ResponseStatus;
+      
+      if len = 1 then
+        case data[0] of
+          RESP_INVALID_COMMAND: status := ResponseStatus.InvalidCommand;
+          RESP_KEY_QUEUE_EMPTY: status := ResponseStatus.KeyQueueEmpty;
+          RESP_INVALID_LENGTH : status := ResponseStatus.InvalidLength;
+          RESP_INVALID_VALUE  : status := ResponseStatus.InvalidValue;
+          RESP_INVALID_PASS   : status := ResponseStatus.InvalidPass;
+          else                  status := ResponseStatus.ResponseUnknownCode;
+        end
+      else
+        status := ResponseStatus.ResponseInvalidLength;
+      
+      result := new Response(status, data);
+    end;
+    
+    private function TransferByte(data: byte; count: integer := 1; timeout: integer := 50) := TransferBytes(new byte[1](data), count, timeout);
     
     private procedure ResetKeyQueue();
     begin
-      var response := SerialTransfer(new byte[](CMD_RESET_QUEUE), 1, 50);
-      if response <> nil then
-        begin
-          if response.Length = 1 then
-            begin
-              var code := response[0];
-              
-              if code <> RESP_SUCCESS then
-                Invoke(() -> _Log.Append($'CMD_RESET_QUEUE erorr = 0x{code:X2}', Color.Red));
-            end
-          else
-            Invoke(() -> _Log.Append($'CMD_RESET_QUEUE response invalid length = {response.Length}', Color.Red));
-        end
-      else
-        Invoke(() -> _Log.Append('CMD_RESET_QUEUE timedout', Color.Red));
+      var status := TransferByte(CMD_RESET_QUEUE).Status;
+      
+      if status <> ResponseStatus.Success then
+        LogErrorAsync('CMD_RESET_QUEUE', status);
     end;
     
     private function GetKeyCount(): integer;
     begin
-      result := -1;
+      var response := TransferByte(CMD_GET_COUNT_KEY, 2);
+      var status   := response.Status;
       
-      var response := SerialTransfer(new byte[](CMD_GET_COUNT_KEY), 2, 50);
-      if response <> nil then
+      if status = ResponseStatus.Success then
         begin
-          if response.Length = 2 then
-            begin
-              var cnt := response[0];
-              var crc := not response[1];
-              
-              if cnt = crc then
-                result := cnt
-              else
-                Invoke(() -> _Log.Append($'CMD_GET_COUNT_KEY response invalid crc: {cnt} != {crc}', Color.Red));
-            end
-          else
-            Invoke(() -> _Log.Append($'CMD_GET_COUNT_KEY response invalid length = {response.Length}', Color.Red));
-        end
-      else
-        Invoke(() -> _Log.Append('CMD_GET_COUNT_KEY timedout', Color.Red));
+          var cnt := response[0];
+          var crc := not response[1];
+          
+          if cnt = crc then
+            exit(cnt);
+          
+          status := ResponseStatus.ResponseInvalidCrc;
+        end;
+      
+      LogErrorAsync('CMD_GET_COUNT_KEY', status);
+      
+      result := -1;
     end;
     
-    private function GetNextKey(): array of byte;
+    private function GetNextKey(): RfidKey;
     begin
-      result := nil;
+      var response := TransferByte(CMD_GET_NEXT_KEY, ENCODE_BYTE_LENGTH*(RfidKey.RFID_KEY_LENGTH+ENCODE_CRC_LENGTH));
+      var status   := response.Status;
+      var command  := 'CMD_GET_NEXT_KEY';
       
-      var response := SerialTransfer(new byte[](CMD_GET_NEXT_KEY), ENCODED_KEY_LENGTH, 50);
-      if response <> nil then
+      if status = ResponseStatus.Success then
         begin
-          if response.Length = ENCODED_KEY_LENGTH then
+          var packet := PacketDecode(response.Data, RfidKey.RFID_KEY_LENGTH+ENCODE_CRC_LENGTH);
+          var crc    := Crc8Calculate(packet, RfidKey.RFID_KEY_LENGTH);
+          
+          if packet[RfidKey.RFID_KEY_LENGTH] = crc then
             begin
-              var packet := PacketDecode(response);
-              var crc    := PacketCrc(packet, packet.Length-1);
+              status := TransferByte(crc).Status;
               
-              if packet[RFID_KEY_LENGTH] = crc then
-                begin
-                  response := SerialTransfer(new byte[](crc), 1, 50);
-                  if response <> nil then
-                    begin
-                      if response.Length = 1 then
-                        begin
-                          var code := response[0];
-                          
-                          if code <> RESP_SUCCESS then
-                            Invoke(() -> _Log.Append($'ACK erorr = 0x{code:X2}', Color.Red));
-                        end
-                      else
-                        Invoke(() -> _Log.Append($'ACK response invalid length = {response.Length}', Color.Red));
-                    end
-                  else
-                    Invoke(() -> _Log.Append('ACK timedout', Color.Red));
-                  
-                  result := new byte[RFID_KEY_LENGTH];
-                  &Array.Copy(packet, result, RFID_KEY_LENGTH);
-                end
-              else
-                Invoke(() -> _Log.Append($'CMD_GET_NEXT_KEY response invalid crc: {packet[RFID_KEY_LENGTH]} != {crc}', Color.Red));
+              if status = ResponseStatus.Success then
+                exit(new RfidKey(packet));
+              
+              command := 'SEND_ACK';
             end
           else
-            Invoke(() -> _Log.Append($'CMD_GET_NEXT_KEY response invalid length = {response.Length}', Color.Red));
-        end
-      else
-        Invoke(() -> _Log.Append('CMD_GET_NEXT_KEY timedout', Color.Red));
+            status := ResponseStatus.ResponseInvalidCrc;
+        end;
+      
+      LogErrorAsync(command, status);
+      
+      result := nil;
+    end;
+    
+    private function StartBootloader(): boolean;
+    begin
+      StopReadTask();
+      
+      LogAppendAsync('Start bootloader ... ', Color.Blue, false);
+      
+      var status  := TransferByte(CMD_START_BOOTLOADER).Status;
+      var command := 'CMD_START_BOOTLOADER';
+      
+      if status = ResponseStatus.Success then
+        begin
+          status := TransferBytes(new byte[2](CMD_BOOTLOADER_PASS and $FF, CMD_BOOTLOADER_PASS shr 8), 1, 300).Status;
+          
+          if status = ResponseStatus.Success then
+            begin
+              LogAppendAsync('ok.', Color.Green);
+              exit(true);
+            end;
+          
+          command := 'BOOT_PASS_ACK';
+        end;
+      
+      LogErrorAsync(command, status);
     end;
     
     private procedure StopReadTask();
     begin
       if _ReadTaskState = TaskState.Running then
         begin
-          _Log.Append('Read Stop ... ', Color.Blue, false);
+          LogAppendAsync('Read Stop ... ', Color.Blue, false);
           
           _ReadTaskState := TaskState.Stoping;
           
@@ -242,12 +330,12 @@ type
     begin
       StopReadTask();
       
-      _Log.Append('Disconnect ... ', Color.Blue, false);
+      LogAppendAsync('Disconnect ... ', Color.Blue, false);
       
       if _Uart.IsOpen then
         _Uart.Close();
       
-      _Log.Append('ok.', Color.Green);
+      LogAppendAsync('ok.', Color.Green);
       
       ConnectUI(false);
     end;
@@ -272,7 +360,7 @@ type
     {$region Tasks}
     private procedure KeyReadTask();
     begin
-      Invoke(() -> _Log.Append('ok.', Color.Green));
+      LogAppendAsync('ok.', Color.Green);
       
       ResetKeyQueue();
       
@@ -286,12 +374,8 @@ type
               
               if key <> nil then
                 begin
-                  var val := longword(0);
-                  for var j := 1 to RFID_KEY_LENGTH-1 do
-                    val := (val shl 8) or key[j];
-                  
-                  var line := String.Format('raw: {0:X2}{1:X8} vid: {0:X2} num: {1}', key[0], val);
-                  Invoke(() -> _Log.Append(line, Color.DarkMagenta));
+                  var line := String.Format('raw: {0:X2}{1:X8} vid: {0:X2} num: {1}', key.Vendor, key.Number);
+                  LogAppendAsync(line, Color.DarkMagenta);
                 end;
             end;
         
@@ -308,38 +392,105 @@ type
       );
     end;
     
-    private procedure KeyWriteTask(command: byte; keys: array of byte);
+    private procedure KeyWriteTask(&type: RfidKeyType; keys: array of RfidKey);
     begin
       StopReadTask();
       
-      var enkeys := PacketEncode(keys);
-      var packet := new byte[1+enkeys.Length];
-      packet[0] := command;
-      &Array.Copy(enkeys, 0, packet, 1, enkeys.Length);
+      var count  := keys.Length;
+      var packet := new byte[1+ENCODE_BYTE_LENGTH*(count*RfidKey.RFID_KEY_LENGTH+ENCODE_CRC_LENGTH)];
       
-      Invoke(() -> _Log.Append('Write key ... ', Color.Blue, false));
-      
-      var CommandDesc := (command and CMD_WRITE_T55X7) = CMD_WRITE_T55X7 ? 'CMD_WRITE_T55X7' : 'CMD_WRITE_EM4X05';
-      
-      var response := SerialTransfer(packet, 1, 2500);
-      if response <> nil then
+      var index := 1;
+      var crc   := 0;
+      for var i := 0 to count-1 do
         begin
-          if response.Length = 1 then
-            begin
-              var code := response[0];
-              
-              if code = RESP_SUCCESS then
-                Invoke(() -> _Log.Append('ok.', Color.Green))
-              else
-                Invoke(() -> _Log.Append($'{CommandDesc} erorr = 0x{code:X2}', Color.Red));
-            end
-          else
-            Invoke(() -> _Log.Append($'{CommandDesc} response invalid length = {response.Length}', Color.Red));
-        end
+          var key := keys[i].ToByteArray();
+          PacketEncode(packet, index, key);
+          crc += Crc8Calculate(key);
+          index += ENCODE_BYTE_LENGTH*RfidKey.RFID_KEY_LENGTH;
+        end;
+      PacketEncode(packet, index, crc);
+      packet[0] := (&type = RfidKeyType.EM4x05 ? CMD_WRITE_EM4X05 : CMD_WRITE_T55X7) or (count and CMD_WRITE_KEY_MASK);
+      
+      LogAppendAsync('Write key ... ', Color.Blue, false);
+      
+      var status := TransferBytes(packet, 1, 2500).Status;
+      
+      if status = ResponseStatus.Success then
+        LogAppendAsync('ok.', Color.Green)
       else
-        Invoke(() -> _Log.Append($'{CommandDesc} timedout', Color.Red));
+        LogErrorAsync(&type = RfidKeyType.EM4x05 ? 'CMD_WRITE_EM4X05' : 'CMD_WRITE_T55X7', status);
       
       Invoke(() -> AccessUI(false));
+    end;
+    
+    private procedure BootStartTask();
+    begin
+      if StartBootloader() then
+        begin
+          Disconnect();
+          
+          LogAppendAsync('Now you can close this program and use the firmware download utility.' +
+                         ' The device will remain in firmware update mode until the download is ' +
+                         'complete or until a power cycle occurs.', Color.Black);
+        end
+      else
+        Invoke(() -> AccessUI(false));
+    end;
+    
+    private procedure FirmwareUploadTask(fname: string);
+    begin
+      if StartBootloader() then
+        begin
+          Disconnect();
+          
+          var args := $'-p={_Uart.PortName} -d=9600 -b=32 -c=4096 -s=0xF00 -k=backup.hex -f="{fname}"';
+          var info := new ProcessStartInfo('picboot.exe', args);
+          info.CreateNoWindow         := true;
+          info.UseShellExecute        := false;
+          info.RedirectStandardOutput := true;
+          info.StandardOutputEncoding := Encoding.Default;
+          
+          LogAppendAsync($'Execute: picboot.exe {args}', Color.Black);
+          
+          var proc: Process;
+          try
+            proc := Process.Start(info);
+            
+            var line := '';
+            
+            repeat
+              var c := proc.StandardOutput.Read();
+          
+              if c <> -1 then
+                begin
+                  var ch := char(c);
+                  
+                  if ch = '#' then
+                    LogAppendAsync('#', Color.DarkMagenta, false)
+                  else
+                    begin
+                      line += ch;
+                  
+                      if (ch = #10) or line.EndsWith('| ') then
+                        begin
+                          LogAppendAsync('picboot: ', Color.Black, false);
+                          LogAppendAsync(line, Color.Blue, false);
+                          line := '';
+                        end;
+                    end;
+                end;
+            until proc.StandardOutput.EndOfStream;
+          except on ex: Exception do
+            LogAppendAsync($'Execute error: {ex.Message}.', Color.Red);
+          end;
+          
+          if proc <> nil then
+            proc.Dispose(); 
+          
+          Invoke(() -> begin _PortBox.Enabled := true; end);
+        end
+      else
+        Invoke(() -> AccessUI(false));
     end;
     {$endregion}
     
@@ -391,35 +542,35 @@ type
     
     private procedure KeyReadStopClick(sender: object; e: EventArgs);
     begin
-      _Log.Append('Read Stop ... ', Color.Blue, false);
       _KeyReadStop.Enabled := false;
       _ReadTaskState       := TaskState.Stoping;
+      _Log.Append('Read Stop ... ', Color.Blue, false);
     end;
     
     private procedure KeyTypeCheckedChanged(sender: object; e: EventArgs);
     begin
       var allow := _TypeT55X7.Checked;
+      
       _KeySelect[1].Enabled := allow;
       _KeySelect[2].Enabled := allow;
       _KeyValues[1].Enabled := allow and _KeySelect[1].Checked;
       _KeyValues[2].Enabled := allow and _KeySelect[2].Checked;
+      
+      _KeyWrite.Enabled := allow and _KeyValues[0].Enabled or _KeySelect[0].Checked;
     end;
     
     private procedure KeyWriteClick(sender: object; e: EventArgs);
     begin
-      var count   := _KeyValues[2].Enabled ? 3 : (_KeyValues[1].Enabled ? 2 : 1);
-      var command := (_TypeEM4X05.Checked ? CMD_WRITE_EM4X05 : CMD_WRITE_T55X7) or (count and CMD_WRITE_KEY_MASK);
+      var &type := _TypeEM4X05.Checked ? RfidKeyType.EM4x05 : RfidKeyType.T55x7;
+      var count := _KeyValues[2].Enabled ? 3 : (_KeyValues[1].Enabled ? 2 : 1);
       
-      var keys := new byte[RFID_KEY_LENGTH*count];
+      var keys := new RfidKey[count];
       for var i := 0 to count-1 do
         begin
           var image := _KeyValues[i].Text;
           
           if Regex.IsMatch(image, '^[0-9A-F]{10}$') then
-            begin
-              for var j := 0 to RFID_KEY_LENGTH-1 do
-                keys[RFID_KEY_LENGTH*i+j] := Convert.ToByte(image.Substring(2*j, 2), 16);
-            end
+            keys[i] := new RfidKey(image)
           else
             begin
               _Log.Append($'Key#{i+1} parse error.', Color.Red);
@@ -429,14 +580,16 @@ type
       
       AccessUI(true);
       
-      Task.Factory.StartNew(() -> KeyWriteTask(command, keys));
+      Task.Factory.StartNew(() -> KeyWriteTask(&type, keys));
     end;
     
     private procedure KeySelectCheckedChanged(sender: object; e: EventArgs);
     begin
-      _KeyValues[0].Enabled := _KeySelect[0].Checked or _KeySelect[1].Checked or _KeySelect[2].Checked;
-      _KeyValues[1].Enabled := _KeySelect[1].Checked or _KeySelect[2].Checked;
-      _KeyValues[2].Enabled := _KeySelect[2].Checked;
+      var allow := _TypeT55x7.Checked;
+      
+      _KeyValues[0].Enabled := _KeySelect[0].Checked or (_KeySelect[1].Checked or _KeySelect[2].Checked) and allow;
+      _KeyValues[1].Enabled := (_KeySelect[1].Checked or _KeySelect[2].Checked) and allow;
+      _KeyValues[2].Enabled := _KeySelect[2].Checked and allow;
       
       _KeyWrite.Enabled := _KeyValues[0].Enabled;
     end;
@@ -478,14 +631,48 @@ type
             tb.Cut();
         end;
     end;
+    
+    private procedure BootStartClick(sender: object; e: EventArgs);
+    begin
+      AccessUI(true);
+      
+      Task.Factory.StartNew(BootStartTask);
+    end;
+    
+    private procedure FirmwareSelectClick(sender: object; e: EventArgs);
+    begin
+      var dialog         := new OpenFileDialog();
+      dialog.Filter      := 'IntelHex file (*.hex)|*.hex';
+      dialog.DefaultExt  := 'hex';
+      dialog.Multiselect := false;
+      
+      if dialog.ShowDialog() = System.Windows.Forms.DialogResult.OK then
+        _FirmwareFname.Text := dialog.FileName;
+      
+      dialog.Dispose();
+    end;
+    
+    private procedure FirmwareUploadClick(sender: object; e: EventArgs);
+    begin
+      var fname := _FirmwareFname.Text;
+      
+      if &File.Exists(fname) then
+        begin
+          AccessUI(true);
+          
+          Task.Factory.StartNew(() -> FirmwareUploadTask(fname));
+        end
+      else
+        _Log.Append($'File "{fname}" not found.', Color.Red);
+    end;
     {$endregion}
     
     {$region Ctors}
     public constructor ();
     begin
       {$region Form}
-      MinimumSize   := new System.Drawing.Size(520, 305);
-      Size          := new System.Drawing.Size(520, 305);
+      MinimumSize   := new System.Drawing.Size(516, 408);
+      Size          := new System.Drawing.Size(516, 408);
       Text          := 'RFID@125kHz Read Write';
       Icon          := Resources.Icon('icon.ico');
       StartPosition := FormStartPosition.CenterScreen;
@@ -632,20 +819,60 @@ type
       
       {$region Log}
       _Log          := new LogBox();
-      _Log.Size     := new System.Drawing.Size(310, 248);
+      _Log.Size     := new System.Drawing.Size(310, 353);
       _Log.Location := new System.Drawing.Point(185, 11);
       _Log.Anchor   := AnchorStyles.Left or AnchorStyles.Top or AnchorStyles.Right or AnchorStyles.Bottom;
       _Log.TabStop  := false;
       Controls.Add(_Log);
       {$endregion}
       
+      {$region Upgrade}
+      _UpgradeBox          := new GroupBox();
+      _UpgradeBox.Size     := new System.Drawing.Size(175, 100);
+      _UpgradeBox.Location := new System.Drawing.Point(5, 265);
+      _UpgradeBox.Text     := 'Upgrade';
+      Controls.Add(_UpgradeBox);
+      
+      _BootStart          := new Button();
+      _BootStart.Size     := new System.Drawing.Size(165, 23);
+      _BootStart.Location := new System.Drawing.Point(5, 15);
+      _BootStart.TabStop  := false;
+      _BootStart.Text     := 'Start Bootloader';
+      _BootStart.Click    += BootStartClick;
+      _UpgradeBox.Controls.Add(_BootStart);
+      
+      _FirmwareFname          := new TextBox();
+      _FirmwareFname.Size     := new System.Drawing.Size(140, 23);
+      _FirmwareFname.Location := new System.Drawing.Point(6, 43);
+      _FirmwareFname.TabStop  := false;
+      _UpgradeBox.Controls.Add(_FirmwareFname);
+      
+      _FirmwareSelect          := new Button();
+      _FirmwareSelect.Size     := new System.Drawing.Size(24, 22);
+      _FirmwareSelect.Location := new System.Drawing.Point(146, 42);
+      _FirmwareSelect.Image    := Resources.Image('open.png');
+      _FirmwareSelect.TabStop  := false;
+      _FirmwareSelect.Click    += FirmwareSelectClick;
+      _UpgradeBox.Controls.Add(_FirmwareSelect);
+      
+      _FirmwareUpload          := new Button();
+      _FirmwareUpload.Size     := new System.Drawing.Size(165, 23);
+      _FirmwareUpload.Location := new System.Drawing.Point(5, 68);
+      _FirmwareUpload.TabStop  := false;
+      _FirmwareUpload.Text     := 'Firmware Upload';
+      _FirmwareUpload.Click    += FirmwareUploadClick;
+      _UpgradeBox.Controls.Add(_FirmwareUpload);
+      {$endregion}
+      
       {$region Init}
       _PortConnect.Enabled    := false;
       _PortDisconnect.Enabled := false;
       _TypeT55X7.Checked      := true;
+      _KeyWrite.Enabled       := false;
       _KeyReadStop.Enabled    := false;
       _ReadBox.Enabled        := false;
       _WriteBox.Enabled       := false;
+      _UpgradeBox.Enabled     := false;
       
       PortsUpdateClick(_PortsUpdate, EventArgs.Empty);
       

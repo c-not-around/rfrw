@@ -120,7 +120,9 @@ type
     
     public procedure Append(text: string; color: System.Drawing.Color; newline: boolean := true);
     begin
-      _Log.SelectionColor := color;
+      _Log.SelectionLength := 0;
+      _Log.SelectionStart  := _Log.TextLength;
+      _Log.SelectionColor  := color;
       _Log.AppendText(text);
     
       if newline then
